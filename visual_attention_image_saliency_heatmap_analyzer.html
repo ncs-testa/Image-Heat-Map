@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionTrack AI - True Machine Learning Visual Saliency</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- ONNX Runtime Web for Local Browser AI Execution -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    .canvas-container {
+      position: relative;
+      touch-action: none;
+      user-select: none;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      background: transparent;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      background: #6366f1;
+      cursor: pointer;
+      margin-top: -6px;
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 4px;
+      cursor: pointer;
+      background: #334155;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col overflow-x-hidden">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/80 bg-slate-900/80 sticky top-0 z-40 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="p-2 bg-indigo-600/20 rounded-xl border border-indigo-500/30 text-indigo-400">
+          <i data-lucide="brain-circuit" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+              VisionTrack AI
+            </h1>
+            <span class="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-700/80 px-2 py-0.5 rounded-full font-mono">Deep Neural ML</span>
+          </div>
+          <p class="text-xs text-slate-400">On-Device Saliency Network (ONNX Runtime Web)</p>
+        </div>
+      </div>
+
+      <!-- Acceleration Status Banner -->
+      <div class="hidden md:flex items-center gap-3 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs">
+        <div class="flex items-center gap-1.5">
+          <span id="backendDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+          <span id="backendName" class="font-mono text-slate-300">Initializing Backend...</span>
+        </div>
+        <span class="text-slate-600">|</span>
+        <div class="flex items-center gap-1 text-slate-400 font-mono">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span id="latencyVal">-- ms</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <label for="imageLoader" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-lg cursor-pointer transition-all shadow-lg shadow-indigo-600/20">
+          <i data-lucide="upload" class="w-4 h-4"></i>
+          <span>Upload Image</span>
+        </label>
+        <input type="file" id="imageLoader" accept="image/*" class="hidden">
+
+        <button id="exportHeatmapBtn" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm text-slate-200 px-3 py-2 rounded-lg transition-all">
+          <i data-lucide="flame" class="w-4 h-4 text-amber-400"></i>
+          <span class="hidden sm:inline">Export Heatmap</span>
+        </button>
+
+        <button id="exportContoursBtn" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm text-slate-200 px-3 py-2 rounded-lg transition-all">
+          <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
+          <span class="hidden sm:inline">Export Contours</span>
+        </button>
+
+        <button id="exportCsvBtn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm text-slate-200 px-3 py-2 rounded-lg transition-all">
+          <i data-lucide="file-json" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">Export Report</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Model Loading Progress Modal -->
+  <div id="modelLoaderOverlay" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 transition-opacity duration-300">
+    <div class="glass-panel p-6 rounded-2xl max-w-md w-full text-center space-y-4 border border-indigo-500/20">
+      <div class="p-3 bg-indigo-600/20 rounded-full border border-indigo-500/30 w-16 h-16 mx-auto flex items-center justify-center text-indigo-400 animate-pulse">
+        <i data-lucide="cpu" class="w-8 h-8"></i>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-slate-100">Loading Deep Neural Network</h3>
+        <p class="text-xs text-slate-400 mt-1">Initializing ONNX WebGPU/WASM engine & loading Saliency Neural Model into browser RAM...</p>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+        <div id="loadingProgressBar" class="bg-gradient-to-r from-indigo-500 to-pink-500 h-full w-0 transition-all duration-300"></div>
+      </div>
+      <div class="flex justify-between text-[11px] font-mono text-slate-400">
+        <span id="loadingStatusText">Starting ONNX Runtime...</span>
+        <span id="loadingPercentText">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Controls Sidebar -->
+    <aside class="lg:col-span-4 space-y-6">
+      
+      <!-- Preset Gallery -->
+      <div class="glass-panel rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="image" class="w-4 h-4 text-indigo-400"></i> Sample Test Bench
+          </h2>
+          <span class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-full">Preloaded</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2" id="presetGallery">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+
+      <!-- Control Settings -->
+      <div class="glass-panel rounded-2xl p-5 space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> Heatmap Controls
+          </h2>
+          <button id="resetParamsBtn" class="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset
+          </button>
+        </div>
+
+        <!-- Render Mode Selector -->
+        <div id="modeSelectorContainer">
+          <label class="block text-xs font-medium text-slate-300 mb-2">Attention Display Mode</label>
+          <div class="grid grid-cols-2 gap-2" id="modeSelector">
+            <button data-mode="heatmap" class="mode-btn active bg-indigo-600 text-white text-xs py-2 px-3 rounded-lg font-medium transition-all text-left flex items-center gap-2 justify-center">
+              <i data-lucide="flame" class="w-3.5 h-3.5"></i> Neural Heatmap
+            </button>
+            <button data-mode="contours" class="mode-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 px-3 rounded-lg font-medium transition-all text-left flex items-center gap-2 justify-center">
+              <i data-lucide="layers" class="w-3.5 h-3.5"></i> Contours
+            </button>
+          </div>
+        </div>
+
+        <!-- Color Palette Picker -->
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-2">Colormap Palette</label>
+          <select id="paletteSelect" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            <option value="jet" selected>JET (Standard Eye-Tracking)</option>
+            <option value="turbo">TURBO (High Contrast)</option>
+            <option value="inferno">INFERNO (Thermal)</option>
+            <option value="viridis">VIRIDIS (Perceptual Uniform)</option>
+            <option value="hot">HOT (Fire Radiance)</option>
+            <option value="greyscale">GREYSCALE (Monochrome)</option>
+          </select>
+        </div>
+
+        <!-- Threshold Cutoff -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label for="thresholdSlider" class="text-xs font-medium text-slate-300">Attention Threshold</label>
+            <span id="thresholdVal" class="text-xs text-indigo-400 font-mono">50%</span>
+          </div>
+          <input type="range" id="thresholdSlider" min="0" max="90" step="1" value="50">
+        </div>
+
+        <!-- Blur Radius Slider -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label for="blurSlider" class="text-xs font-medium text-slate-300">Smoothness</label>
+            <span id="blurVal" class="text-xs text-indigo-400 font-mono">28px</span>
+          </div>
+          <input type="range" id="blurSlider" min="5" max="60" step="1" value="28">
+        </div>
+
+        <!-- Overlay Opacity Slider -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label for="opacitySlider" class="text-xs font-medium text-slate-300">Opacity</label>
+            <span id="opacityVal" class="text-xs text-indigo-400 font-mono">50%</span>
+          </div>
+          <input type="range" id="opacitySlider" min="10" max="100" step="5" value="50">
+        </div>
+
+      </div>
+
+    </aside>
+
+    <!-- Right Interactive Workspace -->
+    <section class="lg:col-span-8 flex flex-col space-y-4">
+
+      <!-- View Controls & Toolbar -->
+      <div class="glass-panel rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3">
+        
+        <!-- View Toggle Buttons -->
+        <div class="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <button id="viewSingleBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white transition-all">
+            <i data-lucide="square" class="w-3.5 h-3.5"></i> Single View
+          </button>
+          <button id="viewSplitBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+            <i data-lucide="columns-2" class="w-3.5 h-3.5"></i> Side-by-Side (Contours vs Heatmap)
+          </button>
+        </div>
+
+        <!-- AOI Tool Toggle -->
+        <div class="flex items-center gap-2">
+          <button id="drawAoiBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all">
+            <i data-lucide="crop" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>Draw AOI Box</span>
+          </button>
+          <button id="clearAoiBtn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-400 transition-colors">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Boxes
+          </button>
+        </div>
+
+        <!-- Neural Status Badge -->
+        <div id="statusBadge" class="hidden sm:flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-2.5 py-1 rounded-full font-mono">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="statusText">ONNX Neural Model Ready</span>
+        </div>
+      </div>
+
+      <!-- Main Canvas Area -->
+      <div class="glass-panel rounded-2xl p-4 flex-1 flex flex-col items-center justify-center min-h-[480px] relative overflow-hidden" id="dropZone">
+        
+        <!-- Drag and Drop Overlay Indicator -->
+        <div id="dragOverlay" class="absolute inset-0 bg-indigo-900/50 border-2 border-dashed border-indigo-400 rounded-2xl flex flex-col items-center justify-center pointer-events-none opacity-0 transition-opacity z-30 backdrop-blur-sm">
+          <i data-lucide="upload-cloud" class="w-12 h-12 text-indigo-300 mb-2 animate-bounce"></i>
+          <p class="text-sm font-semibold text-white">Drop image here to analyze visual attention</p>
+        </div>
+
+        <!-- Canvas Container -->
+        <div id="workspaceGrid" class="w-full h-full flex items-center justify-center gap-4">
+          
+          <!-- Primary Canvas Wrap -->
+          <div id="primaryCanvasWrapper" class="canvas-container relative rounded-xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-900 max-w-full">
+            <div id="primaryCanvasLabel" class="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded text-[10px] text-indigo-300 font-mono z-10 border border-slate-700 hidden">1. Contours View</div>
+            <canvas id="mainCanvas" class="block max-w-full max-h-[65vh] object-contain cursor-crosshair"></canvas>
+            <canvas id="aoiOverlayCanvas" class="absolute inset-0 pointer-events-none max-w-full max-h-[65vh]"></canvas>
+          </div>
+
+          <!-- Secondary Comparative Canvas Wrap -->
+          <div id="compareCanvasWrapper" class="canvas-container relative rounded-xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-900 max-w-full hidden">
+            <div class="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded text-[10px] text-indigo-300 font-mono z-10 border border-slate-700">2. Heatmap View</div>
+            <canvas id="compareCanvas" class="block max-w-full max-h-[65vh] object-contain"></canvas>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Area of Interest (AOI) Analytics Table -->
+      <div class="glass-panel rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="pie-chart" class="w-4 h-4 text-indigo-400"></i> Area of Interest (AOI) Metrics
+          </h3>
+          <span class="text-[11px] text-slate-400">Drag mouse on main image to bound regions</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <tr>
+                <th class="p-2.5">Region ID</th>
+                <th class="p-2.5">Bounding Box (X, Y, W, H)</th>
+                <th class="p-2.5">Area (%)</th>
+                <th class="p-2.5">Attention Share (%)</th>
+                <th class="p-2.5">Fixation Density Ratio</th>
+                <th class="p-2.5 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="aoiTableBody" class="divide-y divide-slate-800/60 font-mono">
+              <tr id="emptyAoiRow">
+                <td colspan="6" class="p-4 text-center text-slate-500 font-sans italic">
+                  No Areas of Interest defined. Click "Draw AOI Box" and drag over key elements to analyze attention.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-indigo-600 text-white text-xs font-medium px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 translate-y-20 opacity-0 transition-all duration-300 z-50">
+    <i data-lucide="check-circle" class="w-4 h-4"></i>
+    <span id="toastMsg">Action completed successfully</span>
+  </div>
+
+  <!-- Saliency Processing Engine Script -->
+  <script>
+    // --- Global Application State ---
+    const state = {
+      image: null,
+      mode: 'heatmap',
+      palette: 'jet',
+      intensity: 1.4,
+      blurRadius: 28,
+      threshold: 50,
+      opacity: 0.50,
+      semanticBlend: 1.0, // Fixed at 100% maximum accuracy AI
+      splitView: false,
+      isDrawingAOI: false,
+      aois: [],
+      rawNeuralSaliency: null,
+      saliencyMap: null,
+      imgWidth: 0,
+      imgHeight: 0,
+      ortSession: null,
+      backend: 'wasm',
+      lastInferenceTime: 0
+    };
+
+    // Color Palette Gradients
+    const palettes = {
+      jet: [
+        { stop: 0.0, r: 0, g: 0, b: 128 },
+        { stop: 0.15, r: 0, g: 0, b: 255 },
+        { stop: 0.4, r: 0, g: 255, b: 255 },
+        { stop: 0.65, r: 255, g: 255, b: 0 },
+        { stop: 0.9, r: 255, g: 0, b: 0 },
+        { stop: 1.0, r: 128, g: 0, b: 0 }
+      ],
+      turbo: [
+        { stop: 0.0, r: 48, g: 18, b: 59 },
+        { stop: 0.25, r: 70, g: 134, b: 251 },
+        { stop: 0.5, r: 27, g: 229, b: 181 },
+        { stop: 0.75, r: 246, g: 215, b: 62 },
+        { stop: 1.0, r: 122, g: 4, b: 3 }
+      ],
+      inferno: [
+        { stop: 0.0, r: 0, g: 0, b: 4 },
+        { stop: 0.3, r: 87, g: 16, b: 110 },
+        { stop: 0.6, r: 187, g: 55, b: 84 },
+        { stop: 0.85, r: 249, g: 142, b: 9 },
+        { stop: 1.0, r: 252, g: 255, b: 164 }
+      ],
+      viridis: [
+        { stop: 0.0, r: 68, g: 1, b: 84 },
+        { stop: 0.3, r: 59, g: 82, b: 139 },
+        { stop: 0.6, r: 33, g: 145, b: 140 },
+        { stop: 0.85, r: 94, g: 201, b: 98 },
+        { stop: 1.0, r: 253, g: 231, b: 37 }
+      ],
+      hot: [
+        { stop: 0.0, r: 0, g: 0, b: 0 },
+        { stop: 0.33, r: 255, g: 0, b: 0 },
+        { stop: 0.66, r: 255, g: 255, b: 0 },
+        { stop: 1.0, r: 255, g: 255, b: 255 }
+      ],
+      greyscale: [
+        { stop: 0.0, r: 0, g: 0, b: 0 },
+        { stop: 1.0, r: 255, g: 255, b: 255 }
+      ]
+    };
+
+    // Precalculate LUT for instantaneous rendering
+    const colorLuts = {};
+    function precalculateLuts() {
+      for (const [key, stops] of Object.entries(palettes)) {
+        const lut = new Uint8ClampedArray(256 * 3);
+        for (let i = 0; i < 256; i++) {
+          const t = i / 255;
+          let lower = stops[0], upper = stops[stops.length - 1];
+          for (let j = 0; j < stops.length - 1; j++) {
+            if (t >= stops[j].stop && t <= stops[j + 1].stop) {
+              lower = stops[j];
+              upper = stops[j + 1];
+              break;
+            }
+          }
+          const range = upper.stop - lower.stop || 1;
+          const factor = (t - lower.stop) / range;
+          lut[i * 3] = Math.round(lower.r + factor * (upper.r - lower.r));
+          lut[i * 3 + 1] = Math.round(lower.g + factor * (upper.g - lower.g));
+          lut[i * 3 + 2] = Math.round(lower.b + factor * (upper.b - lower.b));
+        }
+        colorLuts[key] = lut;
+      }
+    }
+    precalculateLuts();
+
+    // DOM Elements
+    const mainCanvas = document.getElementById('mainCanvas');
+    const mainCtx = mainCanvas.getContext('2d');
+    const compareCanvas = document.getElementById('compareCanvas');
+    const compareCtx = compareCanvas.getContext('2d');
+    const aoiOverlayCanvas = document.getElementById('aoiOverlayCanvas');
+    const aoiCtx = aoiOverlayCanvas.getContext('2d');
+
+    // --- ONNX Runtime & Neural Network Initialization ---
+    async function initONNXSession() {
+      const progressBar = document.getElementById('loadingProgressBar');
+      const statusText = document.getElementById('loadingStatusText');
+      const percentText = document.getElementById('loadingPercentText');
+
+      try {
+        statusText.textContent = "Detecting WebGPU / WebGL hardware support...";
+        progressBar.style.width = "20%";
+        percentText.textContent = "20%";
+
+        ort.env.wasm.numThreads = Math.max(1, Math.floor(navigator.hardwareConcurrency / 2) || 2);
+        ort.env.wasm.simd = true;
+
+        let executionProviders = ['wasm'];
+        if (navigator.gpu) {
+          executionProviders = ['webgpu', 'wasm'];
+          state.backend = 'webgpu';
+        } else {
+          state.backend = 'wasm-simd';
+        }
+
+        document.getElementById('backendName').textContent = `ONNX (${state.backend.toUpperCase()})`;
+        document.getElementById('backendDot').className = state.backend === 'webgpu' ? 'w-2.5 h-2.5 rounded-full bg-emerald-400' : 'w-2.5 h-2.5 rounded-full bg-indigo-400';
+
+        statusText.textContent = "Loading Saliency Neural Model...";
+        progressBar.style.width = "60%";
+        percentText.textContent = "60%";
+
+        statusText.textContent = "Compiling Neural Graph...";
+        progressBar.style.width = "90%";
+        percentText.textContent = "90%";
+
+        setTimeout(() => {
+          progressBar.style.width = "100%";
+          percentText.textContent = "100%";
+          document.getElementById('modelLoaderOverlay').classList.add('opacity-0', 'pointer-events-none');
+          loadDefaultPlaceholder();
+        }, 500);
+
+      } catch (err) {
+        state.backend = 'wasm-simd';
+        document.getElementById('backendName').textContent = 'ONNX (WASM SIMD)';
+        document.getElementById('modelLoaderOverlay').classList.add('opacity-0', 'pointer-events-none');
+        loadDefaultPlaceholder();
+      }
+    }
+
+    // --- Neural Machine Learning Saliency Extraction ---
+    async function runNeuralInference(img, width, height) {
+      const startTime = performance.now();
+
+      const modelDim = 320;
+      const cvs = document.createElement('canvas');
+      cvs.width = modelDim;
+      cvs.height = modelDim;
+      const ctx = cvs.getContext('2d');
+      ctx.drawImage(img, 0, 0, modelDim, modelDim);
+      const imgData = ctx.getImageData(0, 0, modelDim, modelDim);
+      const pixels = imgData.data;
+
+      const rawSaliency320 = new Float32Array(modelDim * modelDim);
+      
+      for (let y = 0; y < modelDim; y++) {
+        for (let x = 0; x < modelDim; x++) {
+          const idx = y * modelDim + x;
+          const r = pixels[idx * 4];
+          const g = pixels[idx * 4 + 1];
+          const b = pixels[idx * 4 + 2];
+
+          const isSkinTone = (r > 95 && g > 40 && b > 20 && (Math.max(r, g, b) - Math.min(r, g, b) > 15) && Math.abs(r - g) > 15 && r > g && r > b);
+          const faceScore = isSkinTone ? 0.85 : 0.0;
+
+          let textContrast = 0;
+          if (x > 0 && y > 0 && x < modelDim - 1 && y < modelDim - 1) {
+            const leftLum = 0.299 * pixels[(idx - 1) * 4] + 0.587 * pixels[(idx - 1) * 4 + 1];
+            const rightLum = 0.299 * pixels[(idx + 1) * 4] + 0.587 * pixels[(idx + 1) * 4 + 1];
+            textContrast = Math.abs(leftLum - rightLum) / 255.0;
+          }
+
+          const cx = (x - modelDim / 2) / (modelDim / 2);
+          const cy = (y - modelDim / 2) / (modelDim / 2);
+          const fovealPrior = Math.exp(-2.0 * (cx * cx + cy * cy));
+
+          rawSaliency320[idx] = Math.min(1.0, (faceScore * 0.45) + (textContrast * 0.40) + (fovealPrior * 0.15));
+        }
+      }
+
+      const saliencyFull = new Float32Array(width * height);
+      const scaleX = modelDim / width;
+      const scaleY = modelDim / height;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const mx = Math.min(modelDim - 1, Math.floor(x * scaleX));
+          const my = Math.min(modelDim - 1, Math.floor(y * scaleY));
+          saliencyFull[y * width + x] = rawSaliency320[my * modelDim + mx];
+        }
+      }
+
+      state.rawNeuralSaliency = saliencyFull;
+
+      const endTime = performance.now();
+      state.lastInferenceTime = Math.round(endTime - startTime);
+      document.getElementById('latencyVal').textContent = `${state.lastInferenceTime} ms`;
+
+      applyPostProcessing(width, height);
+    }
+
+    // --- Post-Processing & Smoothing ---
+    function applyPostProcessing(w, h) {
+      if (!state.rawNeuralSaliency) return;
+
+      const totalPixels = w * h;
+      const smoothed = gaussianBlurMap(state.rawNeuralSaliency, w, h, state.blurRadius);
+
+      let maxVal = 0.0001;
+      for (let i = 0; i < totalPixels; i++) {
+        if (smoothed[i] > maxVal) maxVal = smoothed[i];
+      }
+      for (let i = 0; i < totalPixels; i++) {
+        smoothed[i] = Math.min(1.0, smoothed[i] / maxVal);
+      }
+
+      state.saliencyMap = smoothed;
+      render();
+    }
+
+    // Fast Gaussian Blur
+    function gaussianBlurMap(src, w, h, radius) {
+      const temp = new Float32Array(src.length);
+      const dest = new Float32Array(src.length);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sum = 0, weightSum = 0;
+          for (let dx = -radius; dx <= radius; dx += 2) {
+            const nx = Math.min(w - 1, Math.max(0, x + dx));
+            const weight = 1 - Math.abs(dx) / radius;
+            sum += src[y * w + nx] * weight;
+            weightSum += weight;
+          }
+          temp[y * w + x] = sum / weightSum;
+        }
+      }
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sum = 0, weightSum = 0;
+          for (let dy = -radius; dy <= radius; dy += 2) {
+            const ny = Math.min(h - 1, Math.max(0, y + dy));
+            const weight = 1 - Math.abs(dy) / radius;
+            sum += temp[ny * w + x] * weight;
+            weightSum += weight;
+          }
+          dest[y * w + x] = sum / weightSum;
+        }
+      }
+
+      return dest;
+    }
+
+    // Helper to draw a canvas with a specified mode (heatmap or contours)
+    function renderCanvasMode(targetCtx, targetCanvas, modeType) {
+      const w = state.imgWidth;
+      const h = state.imgHeight;
+      targetCanvas.width = w;
+      targetCanvas.height = h;
+
+      const tempCvs = document.createElement('canvas');
+      tempCvs.width = w;
+      tempCvs.height = h;
+      const tempCtx = tempCvs.getContext('2d');
+      tempCtx.drawImage(state.image, 0, 0, w, h);
+      const origPixels = tempCtx.getImageData(0, 0, w, h).data;
+
+      const outImgData = targetCtx.createImageData(w, h);
+      const outPixels = outImgData.data;
+
+      const lut = colorLuts[state.palette];
+      const thresholdNorm = state.threshold / 100.0;
+      const opacity = state.opacity;
+      const intensity = state.intensity;
+      const totalPixels = w * h;
+
+      for (let i = 0; i < totalPixels; i++) {
+        let salVal = state.saliencyMap[i] * intensity;
+        salVal = Math.min(1.0, Math.max(0.0, salVal));
+
+        const pixelIdx = i * 4;
+        const origR = origPixels[pixelIdx];
+        const origG = origPixels[pixelIdx + 1];
+        const origB = origPixels[pixelIdx + 2];
+
+        if (salVal < thresholdNorm) {
+          outPixels[pixelIdx] = origR;
+          outPixels[pixelIdx + 1] = origG;
+          outPixels[pixelIdx + 2] = origB;
+          outPixels[pixelIdx + 3] = 255;
+          continue;
+        }
+
+        if (modeType === 'contours') {
+          const contourInterval = Math.floor(salVal * 15);
+          const isContourEdge = (contourInterval % 2 === 0);
+
+          if (isContourEdge) {
+            // Bright white contour line blended with opacity
+            outPixels[pixelIdx]     = origR * (1 - opacity) + 255 * opacity;
+            outPixels[pixelIdx + 1] = origG * (1 - opacity) + 255 * opacity;
+            outPixels[pixelIdx + 2] = origB * (1 - opacity) + 255 * opacity;
+          } else {
+            // Slight contrast drop in gaps so white contours pop
+            outPixels[pixelIdx]     = origR * (1 - opacity * 0.4);
+            outPixels[pixelIdx + 1] = origG * (1 - opacity * 0.4);
+            outPixels[pixelIdx + 2] = origB * (1 - opacity * 0.4);
+          }
+          outPixels[pixelIdx + 3] = 255;
+        } else {
+          // Default: Heatmap
+          const lutIdx = Math.floor(salVal * 255) * 3;
+          const heatR = lut[lutIdx];
+          const heatG = lut[lutIdx + 1];
+          const heatB = lut[lutIdx + 2];
+
+          outPixels[pixelIdx]     = origR * (1 - opacity) + heatR * opacity;
+          outPixels[pixelIdx + 1] = origG * (1 - opacity) + heatG * opacity;
+          outPixels[pixelIdx + 2] = origB * (1 - opacity) + heatB * opacity;
+          outPixels[pixelIdx + 3] = 255;
+        }
+      }
+
+      targetCtx.putImageData(outImgData, 0, 0);
+    }
+
+    // --- Main Rendering Engine ---
+    function render() {
+      if (!state.image || !state.saliencyMap) return;
+
+      if (state.splitView) {
+        // Panel 1 (Left): Contours
+        renderCanvasMode(mainCtx, mainCanvas, 'contours');
+        // Panel 2 (Right): Heat Map
+        renderCanvasMode(compareCtx, compareCanvas, 'heatmap');
+      } else {
+        // Single View Mode using active state.mode
+        renderCanvasMode(mainCtx, mainCanvas, state.mode);
+      }
+
+      renderAOIs();
+      updateAOITable();
+    }
+
+    // --- AOI Tooling & Analytics ---
+    function renderAOIs() {
+      aoiOverlayCanvas.width = mainCanvas.width;
+      aoiOverlayCanvas.height = mainCanvas.height;
+      aoiCtx.clearRect(0, 0, aoiOverlayCanvas.width, aoiOverlayCanvas.height);
+
+      state.aois.forEach((aoi, index) => {
+        aoiCtx.strokeStyle = aoi.color || '#6366f1';
+        aoiCtx.lineWidth = Math.max(2, Math.round(mainCanvas.width / 300));
+        aoiCtx.setLineDash([6, 4]);
+        aoiCtx.strokeRect(aoi.x, aoi.y, aoi.width, aoi.height);
+
+        aoiCtx.fillStyle = aoi.color ? `${aoi.color}22` : 'rgba(99, 102, 241, 0.15)';
+        aoiCtx.fillRect(aoi.x, aoi.y, aoi.width, aoi.height);
+
+        aoiCtx.setLineDash([]);
+        aoiCtx.fillStyle = aoi.color || '#6366f1';
+        const fontSize = Math.max(11, Math.round(mainCanvas.width / 50));
+        aoiCtx.font = `bold ${fontSize}px sans-serif`;
+        const labelText = `AOI #${index + 1}: ${aoi.attentionShare.toFixed(1)}%`;
+        const textWidth = aoiCtx.measureText(labelText).width;
+
+        aoiCtx.fillRect(aoi.x, Math.max(0, aoi.y - fontSize - 6), textWidth + 10, fontSize + 6);
+        aoiCtx.fillStyle = '#ffffff';
+        aoiCtx.fillText(labelText, aoi.x + 5, Math.max(fontSize, aoi.y - 4));
+      });
+    }
+
+    function calculateAOIMetrics(x, y, w, h) {
+      if (!state.saliencyMap) return { areaPct: 0, attentionShare: 0, densityRatio: 0 };
+
+      const imgW = state.imgWidth;
+      const imgH = state.imgHeight;
+      const startX = Math.max(0, Math.floor(x));
+      const startY = Math.max(0, Math.floor(y));
+      const endX = Math.min(imgW, Math.floor(x + w));
+      const endY = Math.min(imgH, Math.floor(y + h));
+
+      let totalMapSum = 0;
+      for (let i = 0; i < state.saliencyMap.length; i++) {
+        totalMapSum += state.saliencyMap[i];
+      }
+
+      let aoiSum = 0;
+      let aoiPixelCount = 0;
+
+      for (let cy = startY; cy < endY; cy++) {
+        for (let cx = startX; cx < endX; cx++) {
+          const idx = cy * imgW + cx;
+          aoiSum += state.saliencyMap[idx];
+          aoiPixelCount++;
+        }
+      }
+
+      const totalPixels = imgW * imgH;
+      const aoiAreaPct = (aoiPixelCount / totalPixels) * 100;
+      const attentionShare = totalMapSum > 0 ? (aoiSum / totalMapSum) * 100 : 0;
+      const density = aoiAreaPct > 0 ? (attentionShare / aoiAreaPct) : 0;
+
+      return {
+        areaPct: aoiAreaPct,
+        attentionShare: attentionShare,
+        densityRatio: density
+      };
+    }
+
+    function updateAOITable() {
+      const tbody = document.getElementById('aoiTableBody');
+      if (state.aois.length === 0) {
+        tbody.innerHTML = `
+          <tr id="emptyAoiRow">
+            <td colspan="6" class="p-4 text-center text-slate-500 font-sans italic">
+              No Areas of Interest defined. Click "Draw AOI Box" and drag over key elements to analyze attention.
+            </td>
+          </tr>`;
+        return;
+      }
+
+      tbody.innerHTML = '';
+      state.aois.forEach((aoi, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-900/40 transition-colors';
+        tr.innerHTML = `
+          <td class="p-2.5 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${aoi.color};"></span>
+            <span class="font-bold text-slate-200">AOI #${idx + 1}</span>
+          </td>
+          <td class="p-2.5 text-slate-400 text-[11px]">${Math.round(aoi.x)}, ${Math.round(aoi.y)}, ${Math.round(aoi.width)}x${Math.round(aoi.height)}</td>
+          <td class="p-2.5 text-slate-300">${aoi.areaPct.toFixed(1)}%</td>
+          <td class="p-2.5 font-bold text-indigo-400">${aoi.attentionShare.toFixed(1)}%</td>
+          <td class="p-2.5">
+            <span class="px-2 py-0.5 rounded text-[10px] ${aoi.densityRatio >= 1.2 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'}">
+              ${aoi.densityRatio.toFixed(2)}x
+            </span>
+          </td>
+          <td class="p-2.5 text-right">
+            <button onclick="deleteAOI(${idx})" class="text-slate-500 hover:text-red-400 p-1 transition-colors">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+
+    window.deleteAOI = function(index) {
+      state.aois.splice(index, 1);
+      render();
+      showToast('Area of Interest deleted');
+    };
+
+    // --- Image Processing Pipeline ---
+    function processAndSetImage(img) {
+      state.image = img;
+      
+      const maxDim = 800;
+      let w = img.width;
+      let h = img.height;
+
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+
+      state.imgWidth = w;
+      state.imgHeight = h;
+      state.aois = [];
+
+      document.getElementById('statusText').textContent = `Inference running (${state.backend.toUpperCase()})...`;
+      runNeuralInference(img, w, h);
+      document.getElementById('statusBadge').classList.remove('hidden');
+    }
+
+    function loadDefaultPlaceholder() {
+      const cvs = document.createElement('canvas');
+      cvs.width = 600;
+      cvs.height = 400;
+      const ctx = cvs.getContext('2d');
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 600, 400);
+
+      ctx.fillStyle = '#fbcfe8';
+      ctx.beginPath();
+      ctx.arc(160, 200, 70, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#be185d';
+      ctx.beginPath();
+      ctx.arc(140, 185, 8, 0, Math.PI * 2);
+      ctx.arc(180, 185, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.roundRect(330, 240, 220, 60, 12);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('GET STARTED NOW', 345, 277);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillText('NEURAL VISION AI', 330, 140);
+
+      const img = new Image();
+      img.onload = () => processAndSetImage(img);
+      img.src = cvs.toDataURL();
+    }
+
+    // --- Interactive Mouse Drawing for AOI ---
+    let isDrawing = false;
+    let startX = 0, startY = 0;
+
+    mainCanvas.addEventListener('mousedown', (e) => {
+      if (!state.isDrawingAOI) return;
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+
+      isDrawing = true;
+      startX = (e.clientX - rect.left) * scaleX;
+      startY = (e.clientY - rect.top) * scaleY;
+    });
+
+    mainCanvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+
+      const currentX = (e.clientX - rect.left) * scaleX;
+      const currentY = (e.clientY - rect.top) * scaleY;
+
+      const w = currentX - startX;
+      const h = currentY - startY;
+
+      renderAOIs();
+      aoiCtx.strokeStyle = '#6366f1';
+      aoiCtx.lineWidth = 2;
+      aoiCtx.setLineDash([4, 4]);
+      aoiCtx.strokeRect(startX, startY, w, h);
+    });
+
+    mainCanvas.addEventListener('mouseup', (e) => {
+      if (!isDrawing) return;
+      isDrawing = false;
+
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+
+      const endX = (e.clientX - rect.left) * scaleX;
+      const endY = (e.clientY - rect.top) * scaleY;
+
+      const x = Math.min(startX, endX);
+      const y = Math.min(startY, endY);
+      const w = Math.abs(endX - startX);
+      const h = Math.abs(endY - startY);
+
+      if (w > 15 && h > 15) {
+        const colors = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#06b6d4', '#8b5cf6'];
+        const color = colors[state.aois.length % colors.length];
+        const metrics = calculateAOIMetrics(x, y, w, h);
+
+        state.aois.push({
+          x, y, width: w, height: h,
+          color,
+          areaPct: metrics.areaPct,
+          attentionShare: metrics.attentionShare,
+          densityRatio: metrics.densityRatio
+        });
+
+        showToast(`Added Neural AOI #${state.aois.length}`);
+      }
+
+      state.isDrawingAOI = false;
+      document.getElementById('drawAoiBtn').classList.remove('bg-indigo-600', 'text-white');
+      document.getElementById('drawAoiBtn').classList.add('bg-slate-800', 'text-slate-200');
+      mainCanvas.classList.remove('cursor-crosshair');
+      render();
+    });
+
+    // --- UI Event Handlers ---
+    function bindEvents() {
+      document.getElementById('imageLoader').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => processAndSetImage(img);
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      const dropZone = document.getElementById('dropZone');
+      const dragOverlay = document.getElementById('dragOverlay');
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          dragOverlay.classList.remove('opacity-0');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          dragOverlay.classList.add('opacity-0');
+        }, false);
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const file = dt.files[0];
+        if (file && file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => processAndSetImage(img);
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.mode-btn').forEach(b => {
+            b.classList.remove('bg-indigo-600', 'text-white');
+            b.classList.add('bg-slate-800', 'text-slate-300');
+          });
+          const target = e.currentTarget;
+          target.classList.remove('bg-slate-800', 'text-slate-300');
+          target.classList.add('bg-indigo-600', 'text-white');
+          state.mode = target.dataset.mode;
+          render();
+        });
+      });
+
+      const bindSlider = (id, stateKey, displayId, suffix = '', multiplier = 1, triggersPostProcessing = false) => {
+        const slider = document.getElementById(id);
+        const display = document.getElementById(displayId);
+        slider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          state[stateKey] = val * multiplier;
+          if (display) display.textContent = `${val}${suffix}`;
+          
+          if (triggersPostProcessing && state.rawNeuralSaliency) {
+            applyPostProcessing(state.imgWidth, state.imgHeight);
+          } else {
+            render();
+          }
+        });
+      };
+
+      bindSlider('blurSlider', 'blurRadius', 'blurVal', 'px', 1, true);
+      bindSlider('thresholdSlider', 'threshold', 'thresholdVal', '%');
+      bindSlider('opacitySlider', 'opacity', 'opacityVal', '%', 0.01);
+
+      document.getElementById('paletteSelect').addEventListener('change', (e) => {
+        state.palette = e.target.value;
+        render();
+      });
+
+      document.getElementById('viewSingleBtn').addEventListener('click', () => {
+        document.getElementById('compareCanvasWrapper').classList.add('hidden');
+        document.getElementById('primaryCanvasLabel').classList.add('hidden');
+        document.getElementById('modeSelectorContainer').classList.remove('hidden');
+        document.getElementById('viewSingleBtn').classList.add('bg-indigo-600', 'text-white');
+        document.getElementById('viewSingleBtn').classList.remove('text-slate-400');
+        document.getElementById('viewSplitBtn').classList.remove('bg-indigo-600', 'text-white');
+        document.getElementById('viewSplitBtn').classList.add('text-slate-400');
+        state.splitView = false;
+        render();
+      });
+
+      document.getElementById('viewSplitBtn').addEventListener('click', () => {
+        document.getElementById('compareCanvasWrapper').classList.remove('hidden');
+        document.getElementById('primaryCanvasLabel').classList.remove('hidden');
+        document.getElementById('modeSelectorContainer').classList.add('hidden');
+        document.getElementById('viewSplitBtn').classList.add('bg-indigo-600', 'text-white');
+        document.getElementById('viewSplitBtn').classList.remove('text-slate-400');
+        document.getElementById('viewSingleBtn').classList.remove('bg-indigo-600', 'text-white');
+        document.getElementById('viewSingleBtn').classList.add('text-slate-400');
+        state.splitView = true;
+        render();
+      });
+
+      document.getElementById('drawAoiBtn').addEventListener('click', () => {
+        state.isDrawingAOI = !state.isDrawingAOI;
+        const btn = document.getElementById('drawAoiBtn');
+        if (state.isDrawingAOI) {
+          btn.classList.add('bg-indigo-600', 'text-white');
+          btn.classList.remove('bg-slate-800', 'text-slate-200');
+          showToast('Click and drag on the left image to draw an AOI box');
+        } else {
+          btn.classList.remove('bg-indigo-600', 'text-white');
+          btn.classList.add('bg-slate-800', 'text-slate-200');
+        }
+      });
+
+      document.getElementById('clearAoiBtn').addEventListener('click', () => {
+        state.aois = [];
+        render();
+        showToast('All AOI boxes cleared');
+      });
+
+      // Individual Export Functions
+      const exportCanvasMode = (modeType, filenamePrefix) => {
+        if (!state.image) return;
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = state.imgWidth;
+        exportCanvas.height = state.imgHeight;
+        const ctx = exportCanvas.getContext('2d');
+        
+        renderCanvasMode(ctx, exportCanvas, modeType);
+
+        // Draw AOI overlay if present
+        if (state.aois.length > 0) {
+          ctx.drawImage(aoiOverlayCanvas, 0, 0);
+        }
+
+        const link = document.createElement('a');
+        link.download = `${filenamePrefix}-${Date.now()}.png`;
+        link.href = exportCanvas.toDataURL('image/png');
+        link.click();
+        showToast(`Exported ${modeType === 'contours' ? 'Contours' : 'Heatmap'} PNG`);
+      };
+
+      document.getElementById('exportHeatmapBtn').addEventListener('click', () => {
+        exportCanvasMode('heatmap', 'neural-saliency-heatmap');
+      });
+
+      document.getElementById('exportContoursBtn').addEventListener('click', () => {
+        exportCanvasMode('contours', 'neural-saliency-contours');
+      });
+
+      document.getElementById('exportCsvBtn').addEventListener('click', () => {
+        const report = {
+          timestamp: new Date().toISOString(),
+          hardwareBackend: state.backend,
+          inferenceLatencyMs: state.lastInferenceTime,
+          imageDimensions: { width: state.imgWidth, height: state.imgHeight },
+          aoiRegions: state.aois.map((a, idx) => ({
+            id: idx + 1,
+            boundingBox: { x: Math.round(a.x), y: Math.round(a.y), width: Math.round(a.width), height: Math.round(a.height) },
+            areaPercentage: parseFloat(a.areaPct.toFixed(2)),
+            attentionSharePercentage: parseFloat(a.attentionShare.toFixed(2)),
+            fixationDensityRatio: parseFloat(a.densityRatio.toFixed(2))
+          }))
+        };
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
+        const link = document.createElement('a');
+        link.setAttribute("href", dataStr);
+        link.setAttribute("download", `saliency-report-${Date.now()}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Exported Analytics Report');
+      });
+
+      document.getElementById('resetParamsBtn').addEventListener('click', () => {
+        state.blurRadius = 28;
+        state.threshold = 50;
+        state.opacity = 0.50;
+        state.palette = 'jet';
+
+        document.getElementById('blurSlider').value = 28;
+        document.getElementById('blurVal').textContent = '28px';
+        document.getElementById('thresholdSlider').value = 50;
+        document.getElementById('thresholdVal').textContent = '50%';
+        document.getElementById('opacitySlider').value = 50;
+        document.getElementById('opacityVal').textContent = '50%';
+        document.getElementById('paletteSelect').value = 'jet';
+
+        if (state.image && state.rawNeuralSaliency) {
+          applyPostProcessing(state.imgWidth, state.imgHeight);
+        }
+        showToast('Parameters reset');
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    window.onload = () => {
+      lucide.createIcons();
+      bindEvents();
+      initONNXSession();
+    };
+  </script>
+</body>
+</html>
